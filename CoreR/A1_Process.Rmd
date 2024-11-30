@@ -1,7 +1,7 @@
 ---
 title:  "A1_Process.Rmd / Heat-Related Mortality / Exposure Response"
 author: "Hans-Aloys Wischmann"
-date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2024-11-29 / Executed: `r Sys.Date()`"
+date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2024-11-30 / Executed: `r Sys.Date()`"
 output: word_document
 ---
 
@@ -874,13 +874,13 @@ Common GAMs are computed for the weekly death rates (assuming a gaussian error d
 
   # visualize heat-related mortality: temperature response
   plot_pdf_png("Figure_4", aspect_ratio = 0.5,
-    response_functions %>% arrange(age, sex) %>%
-      ggplot(aes(x = tmpc, y = response, group_by = interaction(age, sex), fill = interaction(age, sex), color = interaction(age, sex))) +
+    response_functions %>% arrange(desc(age), sex) %>% mutate(age_sex = fct_inorder(paste(age, sex, sep = ":"))) %>%
+      ggplot(aes(x = tmpc, y = response, group_by = age_sex, fill = age_sex, color = age_sex)) +
         geom_ribbon(aes(ymin = response + qnorm(ALPHA * 0.5) * se, ymax = response + qnorm(1.0 - ALPHA * 0.5) * se), alpha = 0.2, color = NA) +
         geom_line() +
         labs(y = "Weekly Mortality Rate [1/100.000], with 95%-CI", x = "T [°C]") +
-        scale_color_manual(values = safe_colorblind_palette, name = "Age.Sex") +
-        scale_fill_manual(values = safe_colorblind_palette, name = "Age.Sex") +
+        scale_color_manual(values = safe_colorblind_palette, name = "Age:Sex") +
+        scale_fill_manual(values = safe_colorblind_palette, name = "Age:Sex") +
         std_theme() + facet_wrap(~model, nrow = 1, scale = "free_x"))
   print("Heat-Related Response, Common Models, by Sex by Age")
 
