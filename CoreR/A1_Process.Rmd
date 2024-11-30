@@ -429,7 +429,8 @@ Vervielfältigung und Verbreitung, auch auszugsweise, mit Quellenangabe gestatte
     ggplot(aes(xmin = long_min, xmax = long_max, ymin = lat_min, ymax = lat_max, fill = pop)) +
       geom_sf(data = geo_info$geometry, inherit.aes = FALSE, aes(), linewidth = 0.1, color = "#00007F", fill = "#00007F") +
       geom_rect() +
-      labs(y = "© Eurostat, EFGS, for the populations density grid",
+      labs(fill = "Population",
+           y = "© Eurostat, EFGS, for the populations density grid",
            x = "© EuroGeographics for the administrative boundaries") +
       scale_fill_gradient(low = "#00007F", high = "#FFFF7F", breaks = 3:6, labels = ~sprintf("%d", 10^(3:6)), limits = c(2.5, 6.0)) +
       geom_sf(data = geo_info$geometry, inherit.aes = FALSE, aes(), linewidth = 0.2, color = "white", fill = NA) +
@@ -531,7 +532,7 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
     left_join(., geo_info %>% select(id_region, country), join_by("geo" == "id_region")) %>%
     group_by(country, length) %>% reframe(n = sum(n))
 
-  plot_pdf_png("Figure_S3", aspect_ratio = 1.0,
+  plot_pdf_png("Figure_S3", aspect_ratio = 0.5,
     consecutive_days_25 %>%
     ggplot(aes(x = length, y = n, group_by = country, color = country, label = country)) +
       geom_point(size = 3.0) + geom_line(linewidth = 1.0) +
@@ -558,7 +559,7 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
     left_join(., geo_info, join_by("geo" == "id_region")) %>% st_as_sf() %>%
     ggplot() +
       geom_sf(aes(fill = tmp)) +
-      labs(x = "© EuroGeographics for the administrative boundaries, © E-OBS for the temperature data") +
+      labs(fill = "T [°C]", x = "© EuroGeographics for the administrative boundaries, © E-OBS for the temperature data") +
       theme(legend.position = "right") +
       scale_fill_gradientn(colors = safe_heatmap_palette, breaks = seq(15, 30, 5), limits = c(12.0, 33.0)) +
       geom_sf(inherit.aes = FALSE, aes(), linewidth = 0.05, color = "black", fill = NA) +
@@ -592,6 +593,7 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
       labs(color = "Country", x = "", y = "Weekly Deaths") +
       scale_color_manual(values = safe_colorblind_palette) +
       std_theme() + theme(legend.position = "top", axis.ticks.x=element_blank()) +
+      guides(color = guide_legend(nrow = 2, byrow = FALSE)) +
       facet_wrap(~panel, ncol = 1, scales = "free_x"))
   print("Deaths (Observed)")
 
@@ -606,6 +608,7 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
       labs(color = "Country", x = "", y = "Weekly Deaths - Mean(Weekly Deaths)") +
       scale_color_manual(values = safe_colorblind_palette) +
       std_theme() + theme(legend.position = "top", axis.ticks.x=element_blank()) +
+      guides(color = guide_legend(nrow = 2, byrow = FALSE)) +
       facet_wrap(~panel, ncol = 1, scales = "free_x"))
   print("Deaths (EU27 Standard Population)")
 ```
@@ -871,7 +874,7 @@ Common GAMs are computed for the weekly death rates (assuming a gaussian error d
 
   # visualize heat-related mortality: temperature response
   plot_pdf_png("Figure_4", aspect_ratio = 0.5,
-    response_functions %>%
+    response_functions %>% arrange(age, sex) %>%
       ggplot(aes(x = tmpc, y = response, group_by = interaction(age, sex), fill = interaction(age, sex), color = interaction(age, sex))) +
         geom_ribbon(aes(ymin = response + qnorm(ALPHA * 0.5) * se, ymax = response + qnorm(1.0 - ALPHA * 0.5) * se), alpha = 0.2, color = NA) +
         geom_line() +
