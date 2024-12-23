@@ -1,7 +1,7 @@
 ---
 title:  "A1_Process.Rmd / Heat-Related Mortality / Exposure Response"
 author: "Hans-Aloys Wischmann"
-date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2024-12-01 / Executed: `r Sys.Date()`"
+date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2024-12-23 / Executed: `r Sys.Date()`"
 output: word_document
 ---
 
@@ -12,16 +12,15 @@ output: word_document
   knitr::opts_chunk$set(echo = FALSE, dpi = 1200, fig.width = 10.0, fig.height = 10.0)
   knitr::opts_knit$set(root.dir = getwd())
 
-  # create a clean slate
+  # create a clean slate, start the clock
   rm(list = ls())
-
-  # get initial time stamp
   start_time <- Sys.time()
 
-  # configurable parameters: years to use for modeling and prediction
+  # configurable parameters: years to use for modeling and prediction, statistical significance cutoff
   YEARS_MODEL <- 2000:2023            # include COVID pandemic years, but with exclusions
   COVID_YEARS <- c(2020, 2022)        # two years with COVID mortality impact during summer
   LOADS_YEAR  <- min(COVID_YEARS) - 1 # show factor loading just before COVID
+  ALPHA       <- 0.05                 # standard 0.05 value
 
   # configurable parameters: seasonal week range to analyze (summer)
   FIRST_SUMMER_WEEK <- 15 # as in RKI model: begin of summer period
@@ -30,16 +29,11 @@ output: word_document
   DOF_WEEK          <-  5 # fewer than in RKI model
   LAG_MAX           <-  3 # maximum number of days to look back for temperature exposure
 
-  # configurable parameters: countries and NUTS levels to process
-  countries_of_interest <- c("UK" = "United Kingdom", "FR" = "France", "DE" = "Germany", "IT" = "Italy", "ES" = "Spain",
-                             "PT" = "Portugal", "BE" = "Belgium", "NL" = "Netherlands", "CH" = "Switzerland", "AT" = "Austria")
-  levels_of_interest    <- c("UK" = 1, "FR" = 2, "DE" = 1, "IT" = 2, "ES" = 2, "PT" = 2, "BE" = 2, "NL" = 2, "CH" = 2, "AT" = 2)
-
-  # configurable parameters: geographies to exclude (regular expression)
-  geographies_to_exclude = "^FRY|^FRX|^ES7|^ES63|^ES64|^UKN|^UKM|^PT2|^PT3"
-
-  # cutoff for statistical significance
-  ALPHA <- 0.05
+  # configurable parameters: countries and NUTS levels to process, geographies to exclude (regular expressions)
+  countries_of_interest  <- c("UK" = "United Kingdom", "FR" = "France", "DE" = "Germany", "IT" = "Italy", "ES" = "Spain",
+                              "PT" = "Portugal", "BE" = "Belgium", "NL" = "Netherlands", "CH" = "Switzerland", "AT" = "Austria")
+  levels_of_interest     <- c("UK" = 1, "FR" = 2, "DE" = 1, "IT" = 2, "ES" = 2, "PT" = 2, "BE" = 2, "NL" = 2, "CH" = 2, "AT" = 2)
+  geographies_to_exclude <- "^FRY|^FRX|^ES7|^ES63|^ES64|^UKN|^UKM|^PT2|^PT3"
 
   # document configurable parameters
   params_config <- mget(ls())
@@ -51,11 +45,8 @@ output: word_document
 
   # function to replace install.packages/library combination
   library_wrapper <- function(package) {
-    if (!require(package, character.only = TRUE)) {
-      install.packages(package)
-    }
-    library(package, character.only = TRUE)
-    message(paste("Using package:", package, "version", packageVersion(package)))
+    if (!require(package, character.only = TRUE)) { install.packages(package) }
+    library(package, character.only = TRUE, quietly = TRUE)
   }
 
   # load libraries, after installing if necessary
@@ -73,9 +64,12 @@ output: word_document
   library_wrapper("splines")
   library_wrapper("RhpcBLASctl")
 
-  # use all physical cores when processing in parallel, but limit BLAS to two threads per parallel chunk
-  registerDoParallel(cores = get_num_cores())
-  blas_set_num_threads(get_num_procs() / get_num_cores())
+  # use all physical cores for threads, up to max_threads, limit number of BLAS per thread
+  config_parallel <- function(max_threads = NA) {
+    registerDoParallel(cores = min(get_num_cores(), max_threads, na.rm = TRUE))
+    blas_set_num_threads(get_num_procs() / min(get_num_cores(), max_threads, na.rm = TRUE))
+  }
+  config_parallel()
 
   # read/write csv and tsv files in "UTF-8" encoding with semi-colon as separator, without row numbers
   load_csv <- function(file) { return(read.csv(file, sep = ";", encoding = "UTF-8")) }
@@ -86,15 +80,13 @@ output: word_document
   update_geom_defaults("text", list(size = ggplot_font_size * 0.35)) # font size for geom_text, in mm
   plot_pdf_png <- function(file_name, aspect_ratio, plot_object, plot_width = 8.0, plot_res = 1200) {
     themed_object <- plot_object + theme(text = element_text(size = ggplot_font_size), plot.title = element_text(size = ggplot_font_size))
-    pdf_file <- sprintf("../Plots/%s.pdf", file_name)
-    pdf(pdf_file, plot_width, plot_width * aspect_ratio, paper = "a4")
+    pdf(sprintf("../Plots/%s.pdf", file_name), plot_width, plot_width * aspect_ratio, paper = "a4")
     print(themed_object)
     ignore <- dev.off()
-    png_file <- sprintf("../Plots/%s.png", file_name)
-    png(png_file, width = plot_width, height = plot_width * aspect_ratio, units = "in", res = plot_res)
+    png(sprintf("../Plots/%s.png", file_name), width = plot_width, height = plot_width * aspect_ratio, units = "in", res = plot_res)
     print(themed_object)
     ignore <- dev.off()
-    knitr::include_graphics(png_file, dpi = 1200)
+    knitr::include_graphics(sprintf("../Plots/%s.png", file_name), dpi = 1200)
   }
 
   # create a standard theme
@@ -117,35 +109,28 @@ output: word_document
     mutate(date_to = date_from + 6, year = isoyear(date_from), week = isoweek(date_from))
 
   # new year and mid year tick marks for multi-year plots, axis labels
-  MID_YEAR_DATES <- seq(as.Date(sprintf("%d-07-01", min(YEARS_MODEL))),
-                        as.Date(sprintf("%d-07-01", max(YEARS_MODEL))), by = "year")
-  NEW_YEAR_DATES <- seq(as.Date(sprintf("%d-01-01", min(YEARS_MODEL))),
-                        as.Date(sprintf("%d-01-01", max(YEARS_MODEL) + 1)), by = "year")
+  MID_YEAR_DATES <- seq(as.Date(sprintf("%d-07-01", min(YEARS_MODEL))), as.Date(sprintf("%d-07-01", max(YEARS_MODEL))), by = "year")
+  NEW_YEAR_DATES <- seq(as.Date(sprintf("%d-01-01", min(YEARS_MODEL))), as.Date(sprintf("%d-01-01", max(YEARS_MODEL) + 1)), by = "year")
   YEAR_BREAKS <- c(MID_YEAR_DATES, NEW_YEAR_DATES)
   YEAR_LABELS <- c(YEARS_MODEL, rep("|", length(NEW_YEAR_DATES)))
 
   # age ranges (standard plus coarse to match available data), plus mapping for aggregation
-  age_5y_standard <- data.frame(age_from = seq(0, 85, 5),    age_to = c(seq(4, 84, 5), 99)) %>%
-    mutate(age = fct_inorder(paste(age_from, age_to, sep = "-")))
-  age_4cat_coarse <- data.frame(age_from = c(0, 65, 75, 85), age_to = c(64, 74, 84, 99))    %>%
-    mutate(age = fct_inorder(paste(age_from, age_to, sep = "-")))
-  age_aggregate   <- left_join(age_5y_standard, age_4cat_coarse, join_by("age_from" >= "age_from", "age_to" <= "age_to")) %>%
-    select(age = age.x, age_cat = age.y)
+  age_5y_standard <- data.frame(age_from = seq(0, 85, 5),    age_to = c(seq(4, 84, 5), 99)) %>% mutate(age = fct_inorder(paste(age_from, age_to, sep = "-")))
+  age_4cat_coarse <- data.frame(age_from = c(0, 65, 75, 85), age_to = c(64, 74, 84, 99))    %>% mutate(age = fct_inorder(paste(age_from, age_to, sep = "-")))
+  age_aggregate   <- left_join(age_5y_standard, age_4cat_coarse, join_by("age_from" >= "age_from", "age_to" <= "age_to")) %>% select(age = age.x, age_cat = age.y)
 ```
 
-## Prerequisites
+## Prerequisites and Expected Execution Time
 
-A0_Download.sh
+Prerequisites: A0_Download.sh successfully completed
 
-## Expected Execution Time
-
-About 12 min @ 12 physical cores, 24 logical cores, 32 GB RAM
+Expected execution time: Less than 20 minutes (@ 12 physical cores, 24 logical cores, 32 GB RAM)
 
 ## Geography
 
 Acknowledgement for administrative boundaries: © EuroGeographics for the administrative boundaries.
 
-Populations are available separately for England and Wales, so that they need to be treated as separate countries for the pre-processing.
+Populations are only available separately for England and Wales, so that they need to be treated as separate countries for the pre-processing.
 
 ```{r NUTS}
   # read NUTS map / geography provided by EU commission, note required acknowledgement (above)
@@ -159,10 +144,10 @@ Populations are available separately for England and Wales, so that they need to
     mutate(country = ifelse(str_sub(id_region, 1, 3) == "UKL", "Wales",   country)) %>%                  # treat Wales as a country
     arrange(country, region) %>%
     filter(level == levels_of_interest[str_sub(id_region, 1, 2)])
-  geo_info %>% select(id_region, region) %>%
-    filter(grepl(geographies_to_exclude, id_region)) %>%
-    arrange(id_region) %>%
-    flextable() %>% set_caption("Excluded regions") %>% autofit()
+  geo_info %>% select(NUTS = id_region, Region = region) %>%
+    filter(grepl(geographies_to_exclude, NUTS)) %>%
+    arrange(NUTS) %>%
+    flextable() %>% set_caption("Excluded Regions") %>% autofit()
   geo_info <- geo_info %>% filter(!grepl(geographies_to_exclude, id_region)) 
   save(geo_info, file = "../Processed/Geography.Rdata", compress = "xz")
 
@@ -189,9 +174,7 @@ Populations are available separately for England and Wales, so that they need to
 
 © European Union, 1995-2024
 
-Unless otherwise indicated (e.g. in individual copyright notices), content owned by the EU on this website is licensed under the Creative Commons Attribution 4.0 International (CC BY 4.0) licence.
-
-This means that reuse is allowed, provided appropriate credit is given and changes are indicated
+Unless otherwise indicated (e.g. in individual copyright notices), content owned by the EU on this website is licensed under the Creative Commons Attribution 4.0 International (CC BY 4.0) licence. This means that reuse is allowed, provided appropriate credit is given and changes are indicated
 
 ```{r population_eurostat}
   # string to convert age range texts to age ranges
@@ -233,7 +216,7 @@ ONS Crown Copyright Reserved [from Nomis on 25 June 2024]
     select(geo = id_region, country, sex, age, year = date, n_pop = value)
 ```
 
-## Populations: Aggregate and Save
+## Populations: Aggregate, Save, and Visualize
 
 ```{r populations}
   # combine Eurostat and ONS populations data
@@ -248,11 +231,7 @@ ONS Crown Copyright Reserved [from Nomis on 25 June 2024]
   print(sprintf("Populations.Rdata (is.na = %d)", sum(is.na(population_5y)) + sum(is.na(population_4cat))))
   rm(list = ls(pattern = "populations"))
   load(file = "../Processed/Populations.Rdata")
-```
 
-## Quick visualizations: Populations
-
-```{r visualize_population_pyramids}
   # quick visual inspection
   plot_pdf_png("Figure_S1", aspect_ratio = 1.0,
     population_5y %>% filter(year == 2022) %>% mutate(n_pop = ifelse(sex == "F", -n_pop, n_pop)) %>%
@@ -270,9 +249,7 @@ ONS Crown Copyright Reserved [from Nomis on 25 June 2024]
 
 © European Union, 1995-2024
 
-Unless otherwise indicated (e.g. in individual copyright notices), content owned by the EU on this website is licensed under the Creative Commons Attribution 4.0 International (CC BY 4.0) licence.
-
-This means that reuse is allowed, provided appropriate credit is given and changes are indicated
+Unless otherwise indicated (e.g. in individual copyright notices), content owned by the EU on this website is licensed under the Creative Commons Attribution 4.0 International (CC BY 4.0) licence. This means that reuse is allowed, provided appropriate credit is given and changes are indicated
 
 ```{r deaths_eurostat}
   # string to convert age range texts to age ranges
@@ -439,8 +416,6 @@ Vervielfältigung und Verbreitung, auch auszugsweise, mit Quellenangabe gestatte
 ```
 
 ## Daily Mean Temperatures
-
-Do not attempt to run this chunk with less than 16 GB of RAM!
 
 Acknowledgment: We acknowledge the E-OBS dataset from the EU-FP6 project UERRA (https://www.uerra.eu) and the Copernicus Climate Change Service, and the data providers in the ECA&D project (https://www.ecad.eu)
 
@@ -615,7 +590,7 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
 
 ## Exposure Response (Raw)
 
-Exposure response is shown by country, as the sum over the regions, by temperature bracket (integer degree +/- 0.5 degrees), for pre-pandemic years.
+Exposure response is shown by country, as the sum over incremental deaths across the regions, by temperature bracket (integer degree +/- 0.5 degrees), for pre-pandemic years, for summer weeks.
 
 ```{r exposure_response_plot}
   # define temperature exposure for a week as the maximum over the 1-to-3 day lagged average temperatures, over the days of the week
@@ -631,37 +606,39 @@ Exposure response is shown by country, as the sum over the regions, by temperatu
     group_by(geo, year, sex, age) %>% mutate(n_deaths = n_deaths - mean(n_deaths)) %>% ungroup() %>%
     left_join(., tmpc_exposure, by = c("geo", "date_from")) %>%
     mutate(decade = sprintf("%d-%d", 10 * (year %/% 10), 10 * (year %/% 10) + 9)) %>%
+    mutate(week = gsub("^.*W", "", ISOweek(date_from + 2))) %>%
+    filter(week >= FIRST_SUMMER_WEEK, week <= LAST_SUMMER_WEEK) %>%
     group_by(country, decade, age, tmpc_max_lag_0_3) %>% reframe(r_deaths = 100000.0 * sum(n_deaths) / sum(n_pop), n_pop = sum(n_pop))
 
   plot_pdf_png("Figure_1", aspect_ratio = 1.0,
     incremental_death_rate_by_country_exposure_by_region %>% filter(tmpc_max_lag_0_3 >= 5.0) %>%
     ggplot(aes(x = tmpc_max_lag_0_3, y = r_deaths, group_by = country, color = country, weight = n_pop)) +
-      geom_smooth(aes(fill = country), formula = y ~ x, method = "loess", span = 0.7, se = TRUE, alpha = 0.2) +
+      geom_smooth(aes(fill = country), formula = y ~ x, method = "loess", span = 0.8, se = TRUE, alpha = 0.2) +
       labs(color = "", fill = "",
            x = "Exposure: Mean Temperature over prior 0:3 Days, Maximum over 7 Days of Week",
-           y = "Weekly Rate of Incremental Deaths [1/100k] (vs. Region-Year-Sex-Age Mean, All Regions)") +
+           y = "Weekly Rate of Incremental Deaths in Summer [1/100k]\nvs. Region-Year-Sex-Age Mean, All Regions") +
       scale_x_continuous(breaks = seq(10, 30, 10), labels = ~sprintf("%d °C", .x)) +
       scale_fill_manual(values = safe_colorblind_palette) +
       scale_color_manual(values = safe_colorblind_palette) +
       guides(fill = guide_legend(nrow = 2, byrow = FALSE)) +
       std_theme() + theme(legend.position = "top") + facet_grid(vars(decade), vars(age), scale = "free"))
-  print("Raw Exposure Response Curves, Incremental Deaths")
+  print("Raw Exposure Response Curves (Summer), Incremental Deaths")
 
   plot_pdf_png("Figure_2", aspect_ratio = 1.0,
     incremental_death_rate_by_country_exposure_by_region %>% filter(tmpc_max_lag_0_3 >= 5.0) %>%
     filter(age %in% c("75-84", "85-99"), !country %in% c("Netherlands", "Italy")) %>%
     mutate(legend = sprintf("Age %s (%s)", age, decade)) %>%
     ggplot(aes(x = tmpc_max_lag_0_3, y = r_deaths, group_by = legend, color = legend, weight = n_pop)) +
-      geom_smooth(aes(fill = legend), formula = y ~ x, method = "loess", span = 0.7, se = TRUE, alpha = 0.2) +
+      geom_smooth(aes(fill = legend), formula = y ~ x, method = "loess", span = 0.8, se = TRUE, alpha = 0.2) +
       labs(color = "", fill = "",
            x = "Exposure: Mean Temperature over prior 0:3 Days, Maximum over 7 Days of Week",
-           y = "Weekly Rate of Incremental Deaths [1/100k] (vs. Region-Year-Sex-Age Mean, All Regions)") +
+           y = "Weekly Rate of Incremental Deaths in Summer [1/100k]\nvs. Region-Year-Sex-Age Mean, All Regions") +
       scale_x_continuous(breaks = seq(10, 30, 10), labels = ~sprintf("%d °C", .x)) +
       scale_fill_manual(values = safe_colorblind_palette) +
       scale_color_manual(values = safe_colorblind_palette) +
       guides(fill = guide_legend(nrow = 2, byrow = FALSE)) +
       std_theme() + theme(legend.position = "top") + facet_wrap(~country, nrow = 3))
-  print("Raw Exposure Response Curves, Incremental Deaths, 74-84 and 85+ Years")
+  print("Raw Exposure Response Curves (Summer), Incremental Deaths, 74-84 and 85+ Years")
 ```
 
 ## Combine Required Data
@@ -693,12 +670,7 @@ Combine England and Wales into England.Wales for the main analysis.
   rm(list = ls(pattern = "populated_grid"))
   rm(list = ls(pattern = "df_summer"))
   rm(list = ls(pattern = "geo_info"))
-
-  # make room in memory, run garbage collector
   gc(full = TRUE)
-
-  # stop implicit clusters
-  doParallel::stopImplicitCluster()
 ```
 
 ## Pass 1 - Individual models by region, by age, by sex, by year: Onset of heat-related risk
@@ -706,41 +678,43 @@ Combine England and Wales into England.Wales for the main analysis.
 Individual GAMs are computed for the weekly death rates (assuming a gaussian error distribution) as a function of the mean temperature across the prior 0..3 days, separately by region(geo), by age groups, by sex, and by year. The onset (t_zero) for positive heat-related mortaliy risk is determined for each model, aggregated across all available years, and subtracted from the actual, observed temperatures, by region(geo), by age, by sex. Many individual models do not show a minimum (t_min), so that the computed estimates for the minima would be less robust and can thus not serve instead as the temperature reference. As the data frame for each model contains only 26 data points (LAST_SUMMER_WEEK - FIRST_SUMMER_WEEK + 1), the seasonal terms are modeled using a smooth function with only 5 DoF. Data from two COVID years (2020 and 2022) are excluded to avoid potential confounding by pandemic mortality effects during summer.
 
 ```{r fit_individual_GAMs}
-  # reload summer data file (can restart processing here)
+  # reload summer data file (entry point to restart processing)
   load(file = "../Processed/DeathsPopTemp.Rdata")
 
-  # fit separate models by region, by age group, by sex, by year
-  do_models_1 <- df_summer %>% select(c = country, g = geo, a = age, s = sex, y = year) %>% distinct() %>% filter(!y %in% COVID_YEARS)
-  do_parallel <- get_num_cores() / 2
-  registerDoParallel(cores = do_parallel)
-  blas_set_num_threads(get_num_procs() / do_parallel)
+  # list of models to fit: by region, age group, sex, and year (1st pass, excluding years with COVID) or by age group and sex (2nd to 4th pass)
+  m_age_sex          <- df_summer %>% select(              age, sex      ) %>% distinct()
+  m_geo_age_sex_year <- df_summer %>% select(country, geo, age, sex, year) %>% distinct() %>% filter(!year %in% COVID_YEARS)
 
-  df_tmpc <- foreach (i = 1:nrow(do_models_1), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
+  # fit separate models either by region, age group, sex, and year (1st pass, excluding years with COVID) or by age group and sex
+  config_parallel(max_threads = 6)
+  df_tmpc <- foreach (i = 1:nrow(m_geo_age_sex_year), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
     # extract subset of data for region, calculate weekly_death_rate for 100k population
-    df_gasy <- df_summer %>% filter(geo == do_models_1$g[i], age == do_models_1$a[i], sex == do_models_1$s[i], year == do_models_1$y[i]) %>%
-      mutate(weekly_death_rate = 1.0e6 * n_deaths / n_pop)
+    df_m <- df_summer %>%
+      filter(geo == m_geo_age_sex_year$geo[i], age == m_geo_age_sex_year$age[i], sex == m_geo_age_sex_year$sex[i], year == m_geo_age_sex_year$year[i]) %>%
+      mutate(weekly_death_rate = 1.0e5 * n_deaths / n_pop)
 
     # fit individual model with seasonal trends and a smooth term for the mean temperature across the prior 0..3 days, leveraging implicit summation over weekdays
-    lag_0_3 <- as.matrix(df_gasy %>% select(starts_with("tmpc_lag_0_3_dow")))
-    gam1 <- bam(weekly_death_rate ~ 1 + ti(week, k = DOF_WEEK, bs = "ps") + ti(lag_0_3, k = DOF_TMPC, bs = "ps"), data = df_gasy, family = gaussian, discrete = TRUE)
+    lag_0_3 <- as.matrix(df_m %>% select(starts_with("tmpc_lag_0_3_dow")))
+    gam1 <- bam(weekly_death_rate ~ 1 + s(week, k = DOF_WEEK, bs = "ps") + s(lag_0_3, k = DOF_TMPC, bs = "ps"), data = df_m, family = gaussian, discrete = TRUE)
 
     # interpolate using identical temperature values for all lags and all weekdays (steady state), mid year for calendar weeks
     df_grid <- expand.grid(week = 26, tmpc = seq(round(min(lag_0_3), 1), round(max(lag_0_3), 1), 0.1)) %>% mutate(lag_0_3 = tmpc) %>%
-      mutate(response = as.vector(predict.gam(gam1, newdata = ., type = "terms", terms = "ti(lag_0_3)")))
+      mutate(response = as.vector(predict.gam(gam1, newdata = ., type = "terms", terms = "s(lag_0_3)")))
 
     # determine highest temperature for which the smooth temperature response shows a local minimum, and the highest protective/neutral temperature
     cbind(df_grid %>% filter(response <= 0) %>% reframe(t_zero = max(tmpc)),
           df_grid %>% filter(lag(response) >= response, lead(response) >= response) %>% reframe(t_min = max(tmpc)),
-          country = do_models_1$c[i], geo = do_models_1$g[i], age = do_models_1$a[i], sex = do_models_1$s[i], year = do_models_1$y[i], n_pop = df_gasy$n_pop[1])
+          m_geo_age_sex_year[i,], n_pop = df_m$n_pop)
   }
 
-  # document total number of models that were fitted
+  # document total number of models that were fitted and number of minima and zero crossings found
   df_tmpc %>% group_by(age, sex) %>% reframe(N = n(), ZeroCrossing = sum(t_zero != -Inf), Minima = sum(t_min != -Inf)) %>%
     bind_rows(reframe(., across(everything(), ~ifelse(is.numeric(.), sum(.), "")))) %>%
     select(Age = age, Sex = sex, N, ZeroCrossing, Minima) %>%
-    flextable() %>% set_caption("Models, Detected Zero Crossings, and Detected Minima") %>% hline(i = 8) %>% autofit()
+    flextable() %>% set_caption("Models: Detected Zero Crossings and Minima") %>% hline(i = 8) %>% autofit()
 
   # aggregate t_min and t_zero over years, ignoring -Inf (no minimum/no zero crossing found), with a linear trend by country alone
+  config_parallel(max_threads = 1)
   lm_zero <- df_tmpc %>% filter(t_zero != -Inf) %>% lm(t_zero ~ 0 + geo:age:sex + country:year, data = ., weights = n_pop)
   lm_min  <- df_tmpc %>% filter(t_min  != -Inf) %>% lm(t_min  ~ 0 + geo:age:sex + country:year, data = ., weights = n_pop)
 
@@ -748,16 +722,13 @@ Individual GAMs are computed for the weekly death rates (assuming a gaussian err
   as.data.frame(summary(lm_zero)$coef) %>% mutate(Country = rownames(.)) %>% filter(grepl(":year", Country)) %>%
     select(Country, Estimate, SE = "Std. Error") %>% arrange(desc(Estimate)) %>%
     mutate(across(c(Estimate, SE), ~10.0 * .), Low = Estimate + qnorm(ALPHA * 0.5) * SE, High = Estimate + qnorm(1.0 - ALPHA * 0.5) * SE) %>%
-    mutate(Trend = sprintf("%.2f [%.2f, %.2f] %s", Estimate, Low, High, ifelse(Low > 0 | High < 0, "*", ""))) %>%
+    mutate(Trend = sprintf("%.2f [%.2f, %.2f]", Estimate, Low, High)) %>%
     mutate(Country = str_replace_all(Country, c("country" = "", ":year" = ""))) %>%
-    select(Country, Trend) %>%
-    flextable() %>%
-      set_caption("Trends in Onset of Heat-Related Risk, by Country") %>%
-      set_header_labels(values = c("Country", "Trend [C°/10 years]")) %>%
-      autofit()
+    select(Country, "Trend [C°/10 years]" = Trend) %>%
+    flextable() %>% set_caption("Trends in Onset of Heat-Related Risk, by Country") %>% align(align = c("left", "right")) %>% autofit()
 
   # interpolate regression models and document mean t_zero by country, sex, and age, and by region, sex, and age
-  df_tzero_tmin <- do_models_1 %>% select(country = c, geo = g, age = a, sex = s, year = y) %>% distinct() %>%
+  df_tzero_tmin <- m_geo_age_sex_year %>%
     group_by(country, geo, age, sex) %>% reframe(year = median(year)) %>%
     mutate(t_zero = predict(lm_zero, newdata = .), t_min = predict(lm_min, newdata = .)) %>% select(!year)
   df_tzero_tmin %>%
@@ -802,10 +773,8 @@ Individual GAMs are computed for the weekly death rates (assuming a gaussian err
       std_theme() + theme(legend.position = "right") + facet_grid(vars(sex), vars(age)))
   print("Minima of Heat-Related Risk, Regression Fit across Years")
 
-  # shift onset of heat-related risk to 0 °C by region, by age, by sex, with the most recent year as the fixed reference (2023)
+  # shift onset of heat-related risk to 0 °C by region, by age, by sex, with the most recent year as the fixed reference (2023), save
   df_summer_shifted <- df_summer %>% left_join(., df_tzero_tmin, by = c("country", "geo", "age", "sex")) %>% mutate(across(starts_with("tmpc"), ~.x - t_zero))
-
-  # save results from pass 1 (for quicker restart at the start of pass 2), merging England and Wales
   save(df_summer_shifted, file = "../Processed/SummerShifted.Rdata", compress = "xz")
 ```
 
@@ -814,62 +783,52 @@ Individual GAMs are computed for the weekly death rates (assuming a gaussian err
 Common GAMs are computed for the weekly death rates (assuming a gaussian error distribution) as a function of the mean temperature across the prior 0..3 days, separately by age groups and by sex, but across regions and years, for observed temperatures and for temperatures relative to the regional reference (onset of heat-related risks). Data from two COVID years (2020 and 2022) are excluded to avoid potential confounding by pandemic mortality effects during summer.
 
 ```{r fit_common_GAMs}
-  # reload unshifted and shifted summer data file (can restart processing here)
-  load(file = "../Processed/DeathsPopTemp.Rdata")
-  load(file = "../Processed/SummerShifted.Rdata")
-
-  # fit common models by age group, by sex, across regions and years
-  do_models_2 <- df_summer_shifted %>% select(a = age, s = sex) %>% distinct()
-  do_parallel <- min(nrow(do_models_2), get_num_cores())
-  registerDoParallel(cores = do_parallel)
-  blas_set_num_threads(get_num_procs() / do_parallel)
-
-  response_functions <- foreach (i = 1:nrow(do_models_2), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
+  # fit common models by sex and age group, across regions and years, removing years with COVID
+  config_parallel(max_threads = nrow(m_age_sex))
+  response_functions <- foreach (i = 1:nrow(m_age_sex), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
     # extract subset of data for region, calculate weekly_death_rate for 100k population
-    df_as <- df_summer %>% filter(age == do_models_2$a[i], sex == do_models_2$s[i]) %>%
-      mutate(weekly_death_rate = 1.0e6 * n_deaths / n_pop) %>% filter(!year %in% COVID_YEARS)
+    df_m <- df_summer %>% filter(age == m_age_sex$age[i], sex == m_age_sex$sex[i]) %>%
+      mutate(weekly_death_rate = 1.0e5 * n_deaths / n_pop) %>% filter(!year %in% COVID_YEARS)
 
     # fit common model across all geographies and years, accounting for differences in absolute rate, in secular trends, in recurring seasonal trends,
     # with a common smooth term for the average temperature over the prior 0..3 days with implicit summation over weekdays
-    lag_0_3 <- as.matrix(df_as %>% select(starts_with("tmpc_lag_0_3_dow")))
-    gam1 <- bam(weekly_death_rate ~ geo + country:factor(year) + ti(week, k = DOF_WEEK, bs = "ps", by = country) + ti(lag_0_3, k = DOF_TMPC, bs = "ps"),
-                weights = n_pop, data = df_as, family = gaussian, discrete = TRUE)
+    lag_0_3 <- as.matrix(df_m %>% select(starts_with("tmpc_lag_0_3_dow")))
+    gam2 <- bam(weekly_death_rate ~ geo + country:factor(year) + s(week, k = DOF_WEEK, bs = "ps", by = country) + s(lag_0_3, k = DOF_TMPC, bs = "ps"),
+                weights = n_pop, data = df_m, family = gaussian, discrete = TRUE)
 
     # predictions for steady state, where geo, country, year and week are ignored, but need to be provided
-    df_grid <- data.frame(geo = "AT11", country = "Austria", year = max(YEARS_MODEL), week = 26, tmpc = seq(round(min(lag_0_3), 1), round(max(lag_0_3), 1), 0.1)) %>%
-      mutate(lag_0_3 = tmpc)
-    predicted_terms <- predict.gam(gam1, newdata = df_grid, type = "terms", terms = "ti(lag_0_3)", se.fit = TRUE)
-    rm(gam1); gc()
+    df_grid <- data.frame(geo = "AT11", country = "Austria", year = max(YEARS_MODEL), week = 26, lag_0_3 = seq(round(min(lag_0_3), 1), round(max(lag_0_3), 1), 0.1))
+    predicted_terms <- predict.gam(gam2, newdata = df_grid, type = "terms", terms = "s(lag_0_3)", se.fit = TRUE)
+    rm(gam2); gc(full = TRUE)
 
     # response functions, by age and sex, to be aggregated
-    observed <- cbind(tmpc = df_grid$tmpc,
-          as.data.frame(predicted_terms$fit   ) %>% rename_with(~str_replace_all(.x, c("ti[(]lag_" = "response_", "[)]" = ""))),
-          as.data.frame(predicted_terms$se.fit) %>% rename_with(~str_replace_all(.x, c("ti[(]lag_" = "se_", "[)]" = ""))))
+    observed <- cbind(tmpc = df_grid$lag_0_3,
+          as.data.frame(predicted_terms$fit   ) %>% rename_with(~str_replace_all(.x, c("s[(]lag_" = "response_", "[)]" = ""))),
+          as.data.frame(predicted_terms$se.fit) %>% rename_with(~str_replace_all(.x, c("s[(]lag_" = "se_", "[)]" = ""))))
 
     # extract subset of data for region, calculate weekly_death_rate for 100k population
-    df_as <- df_summer_shifted %>% filter(age == do_models_2$a[i], sex == do_models_2$s[i]) %>%
-      mutate(weekly_death_rate = 1.0e6 * n_deaths / n_pop) %>% filter(!year %in% COVID_YEARS)
+    df_m <- df_summer_shifted %>% filter(age == m_age_sex$age[i], sex == m_age_sex$sex[i]) %>%
+      mutate(weekly_death_rate = 1.0e5 * n_deaths / n_pop) %>% filter(!year %in% COVID_YEARS)
 
     # fit common model across all geographies and years, accounting for differences in absolute rate, in secular trends, in recurring seasonal trends,
     # with a common smooth term for the average temperature over the prior 0..3 days with implicit summation over weekdays
-    lag_0_3 <- as.matrix(df_as %>% select(starts_with("tmpc_lag_0_3_dow")))
-    gam2 <- bam(weekly_death_rate ~ geo + country:factor(year) + ti(week, k = DOF_WEEK, bs = "ps", by = country) + ti(lag_0_3, k = DOF_TMPC, bs = "ps"),
-                weights = n_pop, data = df_as, family = gaussian, discrete = TRUE)
+    lag_0_3 <- as.matrix(df_m %>% select(starts_with("tmpc_lag_0_3_dow")))
+    gam2 <- bam(weekly_death_rate ~ geo + country:factor(year) + s(week, k = DOF_WEEK, bs = "ps", by = country) + s(lag_0_3, k = DOF_TMPC, bs = "ps"),
+                weights = n_pop, data = df_m, family = gaussian, discrete = TRUE)
 
     # predictions for steady state, where geo, country, year and week are ignored, but need to be provided
-    df_grid <- data.frame(geo = "AT11", country = "Austria", year = max(YEARS_MODEL), week = 26, tmpc = seq(round(min(lag_0_3), 1), round(max(lag_0_3), 1), 0.1)) %>%
-      mutate(lag_0_3 = tmpc)
-    predicted_terms <- predict.gam(gam2, newdata = df_grid, type = "terms", terms = "ti(lag_0_3)", se.fit = TRUE)
-    rm(gam2); gc()
+    df_grid <- data.frame(geo = "AT11", country = "Austria", year = max(YEARS_MODEL), week = 26, lag_0_3 = seq(round(min(lag_0_3), 1), round(max(lag_0_3), 1), 0.1))
+    predicted_terms <- predict.gam(gam2, newdata = df_grid, type = "terms", terms = "s(lag_0_3)", se.fit = TRUE)
+    rm(gam2); gc(full = TRUE)
 
     # response functions, by age and sex, to be aggregated
-    corrected <- cbind(tmpc = df_grid$tmpc,
-          as.data.frame(predicted_terms$fit   ) %>% rename_with(~str_replace_all(.x, c("ti[(]lag_" = "response_", "[)]" = ""))),
-          as.data.frame(predicted_terms$se.fit) %>% rename_with(~str_replace_all(.x, c("ti[(]lag_" = "se_", "[)]" = ""))))
+    corrected <- cbind(tmpc = df_grid$lag_0_3,
+          as.data.frame(predicted_terms$fit   ) %>% rename_with(~str_replace_all(.x, c("s[(]lag_" = "response_", "[)]" = ""))),
+          as.data.frame(predicted_terms$se.fit) %>% rename_with(~str_replace_all(.x, c("s[(]lag_" = "se_", "[)]" = ""))))
     
     # combine response functions
-    rbind(observed  %>% mutate(model = "Observed Temperature"), corrected %>% mutate(model = "Temperature above Onset")) %>%
-      mutate(age = do_models_2$a[i], sex = do_models_2$s[i])
+    rbind(observed %>% mutate(model = "Observed Temperature"), corrected %>% mutate(model = "Temperature above Onset")) %>%
+      mutate(age = m_age_sex$age[i], sex = m_age_sex$sex[i])
   }
 
   # convert into tidy table
@@ -888,18 +847,18 @@ Common GAMs are computed for the weekly death rates (assuming a gaussian error d
         scale_color_manual(values = safe_colorblind_palette, name = "Age:Sex") +
         scale_fill_manual(values = safe_colorblind_palette, name = "Age:Sex") +
         std_theme() + facet_wrap(~model, nrow = 1, scale = "free_x"))
-  print("Heat-Related Response, Common Models, by Sex by Age")
+  print("Heat-Related Response, Common model, by Sex by Age")
 
   # compute and report power-law fits
-  power_laws <- foreach (i = 1:nrow(do_models_2), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
-    nls1 <- nls(response ~ a + b * tmpc^c, start = list(a = 0.0, b = 1.0, c = 2.0),
-      data = response_functions %>% filter(model == "Temperature above Onset", tmpc > 0.0, age == do_models_2$a[i], sex == do_models_2$s[i]))
+  power_laws <- foreach (i = 1:nrow(m_age_sex), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
+    nls1 <- nls(response ~ a + b * tmpc^c, start = list(a = 0.0, b = 0.1, c = 2.0),
+      data = response_functions %>% filter(model == "Temperature above Onset", tmpc > 0.0, age == m_age_sex$age[i], sex == m_age_sex$sex[i]))
     data.frame(power = coef(nls1)["c"], power_cl = confint(nls1, "c", level = 1.0 - ALPHA)[1], power_ch = confint(nls1, "c", level = 1.0 - ALPHA)[2]) %>%
-      mutate(age = do_models_2$a[i], sex = do_models_2$s[i])
+      mutate(Age = m_age_sex$age[i], Sex = m_age_sex$sex[i])
   }
   power_laws %>% mutate(power_ci = sprintf("%.2f [%.2f, %.2f]", power, power_cl, power_ch)) %>%
-    select(Age = age, Sex = sex, Power = power_ci) %>% arrange(Age, Sex) %>%
-    flextable() %>% set_caption("Power Law Approximation to Exposure Respose Curves (t >= t_zero)") %>% autofit()
+    select(Age, Sex, Power = power_ci) %>% arrange(Age, Sex) %>%
+    flextable() %>% set_caption("Power Law Approximation to Exposure Response Curves (T >= T_zero)") %>% align(align = "center", part = "all") %>% autofit()
 ```
 
 ## Pass 3 - Load Factors and Trends, GAM followed by LM
@@ -908,38 +867,33 @@ The common GAMs from pass 2 are re-computed for the weekly death rates (assuming
 
 Data from two COVID years (2020 and 2022) are excluded to avoid potential confounding by pandemic mortality effects during summer.
 
-```{r fit_common_loading_models}
-  # reload the summer data file with temperature exposure relative to the risk onset (can restart processing here)
-  load(file = "../Processed/SummerShifted.Rdata")
-
-  # fit common models by age group, by sex, across regions and years, exclude youngest age groups that showed little or no dependency (flat)
-  do_models_3 <- df_summer_shifted %>% select(a = age, s = sex) %>% distinct() %>% filter(a != "0-64")
-  do_parallel <- min(nrow(do_models_3), get_num_cores())
-  registerDoParallel(cores = do_parallel)
-  blas_set_num_threads(get_num_procs() / do_parallel)
-
-  load_functions <- foreach (i = 1:nrow(do_models_3), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
+```{r fit_loading_common_models}
+  # fit common models by sex and age group, across regions and years, removing years with COVID
+  load_functions <- foreach (i = 1:nrow(m_age_sex), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
     # extract subset of data for region, calculate weekly_death_rate for 100k population
-    df_as <- df_summer_shifted %>% filter(age == do_models_3$a[i], sex == do_models_3$s[i]) %>%
-      mutate(weekly_death_rate = 1.0e6 * n_deaths / n_pop) %>% filter(!year %in% COVID_YEARS) %>%
+    df_m <- df_summer_shifted %>% filter(age == m_age_sex$age[i], sex == m_age_sex$sex[i]) %>%
+      mutate(weekly_death_rate = 1.0e5 * n_deaths / n_pop) %>% filter(!year %in% COVID_YEARS) %>%
       mutate(year = year - LOADS_YEAR) # reference year for factor comparison plot
  
     # re-fit common model across all geographies and years, accounting for differences in absolute rate, in secular trends, in recurring seasonal trends,
     # with a common smooth term for the average temperature over the prior 0..3 days with implicit summation over weekdays
-    lag_0_3 <- as.matrix(df_as %>% select(starts_with("tmpc_lag_0_3_dow")))
-    gam3 <- bam(weekly_death_rate ~ 0 + geo + country:factor(year) + ti(week, k = DOF_WEEK, bs = "ps", by = country) + ti(lag_0_3, k = DOF_TMPC, bs = "ps"),
-                weights = n_pop, data = df_as, family = gaussian, discrete = TRUE)
+    lag_0_3         <- as.matrix(df_m %>% select(starts_with("tmpc_lag_0_3_dow")))
+    lag_0_3_clipped <- as.matrix(df_m %>% select(starts_with("tmpc_lag_0_3_dow")) %>% mutate(across(everything(), ~pmin(0.0, .))))
+    gam3 <- bam(weekly_death_rate ~ 0 + geo + country:factor(year) + s(week, k = DOF_WEEK, bs = "ps", by = country) + s(lag_0_3, k = DOF_TMPC, bs = "ps"),
+                weights = n_pop, data = df_m, family = gaussian, discrete = TRUE)
 
-    # append response functions, subtracting out the offset at the onset temperature
-    df_as <- df_as %>% mutate(t_response = predict.gam(gam3) - predict.gam(gam3, newdata = df_as %>% mutate(lag_0_3 = 0.0)))
+    # append response functions, cancelling out the response below the risk onset
+    df_m <- df_m %>%
+      mutate(t_response = predict.gam(gam3, newdata = list(geo = df_m$geo, country = df_m$country, year = df_m$year, week = df_m$week, lag_0_3 = lag_0_3)) -
+                          predict.gam(gam3, newdata = list(geo = df_m$geo, country = df_m$country, year = df_m$year, week = df_m$week, lag_0_3 = lag_0_3_clipped)))
 
-    # extract load functions from a linear model, using the common response as a predictor variable, replacing ti(week) by bs(week)
+    # extract load functions from a linear model, using the common response as a predictor variable, replacing s(week) by bs(week)
     # and computing country level deviations from the mean response, specified as the offset
-    lm1 <- lm(weekly_death_rate ~ 0 + geo + country:factor(year) + country:bs(week, df = DOF_WEEK) + offset(t_response) + country:t_response + country:year:t_response,
-              weights = n_pop, data = df_as)
-    coefs1 <- as.data.frame(summary(lm1)$coef) %>% mutate(var = rownames(.)) %>% filter(grepl("t_response", var))
+    lm3 <- lm(weekly_death_rate ~ 0 + geo + country:factor(year) + country:bs(week, df = DOF_WEEK) + offset(t_response) + country:t_response + country:year:t_response,
+              weights = n_pop, data = df_m)
+    coefs1 <- as.data.frame(summary(lm3)$coef) %>% mutate(var = rownames(.)) %>% filter(grepl("t_response", var))
     row.names(coefs1) <- NULL
-    coefs1 %>% mutate(age = do_models_3$a[i], sex = do_models_3$s[i])
+    coefs1 %>% mutate(age = m_age_sex$age[i], sex = m_age_sex$sex[i])
   }
 
   # extract results from load functions
@@ -947,17 +901,15 @@ Data from two COVID years (2020 and 2022) are excluded to avoid potential confou
     mutate(country = str_replace_all(var, c("country" = "", ":t_response" = "", ":year" = ""))) %>%
     select(Type, country, age, sex, value = Estimate, SE = "Std. Error", p.value = "Pr(>|t|)")
 
-  # document significant deviations and trends
-  results %>% mutate(Type = paste(Type, ifelse(value < 0.0, "-", "+"), ifelse(p.value < ALPHA, "*", ""))) %>%
-    group_by(Country = country, Type) %>% reframe(N = n()) %>%
-    pivot_wider(names_from = "Type", values_from = "N") %>%
-    mutate(across(everything(), ~ifelse(is.na(.), 0, .))) %>%
-    select(Country, "Scale - *", "Scale + *", "Trend - *", "Trend + *") %>%
-    bind_rows(reframe(., across(where(is.character), ~"Total"), across(where(is.numeric), sum))) %>%
-    mutate(across(is.numeric, ~ifelse(. != 0, ., ""))) %>%
+  # document scales and trends
+  results %>% arrange(country, age, sex) %>%
+    mutate(value = ifelse(Type == "Scale", value + 1.0, value)) %>%
+    mutate(value = sprintf("%.2f (%.2f to %.2f) %s", value, value + qnorm(ALPHA * 0.5) * SE, value + qnorm(1.0 - ALPHA * 0.5) * SE, ifelse(p.value < ALPHA, " *", ""))) %>%
+    select(Type, Country = country, Age = age, Sex = sex, value) %>%
+    pivot_wider(names_from = Type, values_from = value) %>%
     flextable() %>%
-      set_caption("Significant Scales (!= 1) and Trends (!= 0) for Heat Sensitivity by Country: Number of Age/Sex Groups") %>%
-      hline(i = 10) %>% align(align = c("left", rep("center", 4))) %>% autofit()
+      set_caption("Heat Sensitivity: Scale (* != 1) and Trend (* != 0) by Country") %>%
+      hline(i = seq(8, 72, 8)) %>% align(align = "center", part = "all") %>% align(j = 1, align = "left", part = "all") %>% autofit()
 
   # reload geography info file
   load(file = "../Processed/Geography.Rdata")
@@ -967,36 +919,82 @@ Data from two COVID years (2020 and 2022) are excluded to avoid potential confou
     group_by(country) %>% reframe(combined_geometry = st_union(geometry))
 
   # visualize heat sensitivity results
+  min_scale <- min(results %>% filter(Type == "Scale") %>% pull("value"))
+  max_scale <- max(results %>% filter(Type == "Scale") %>% pull("value"))
   plot_pdf_png("Figure_5", aspect_ratio = 0.7,
     results %>% filter(Type == "Scale") %>%
-    mutate(Signif = ifelse(p.value < ALPHA, "*", ""), value = value + 1.0) %>%
     left_join(., country_info, by = "country") %>% st_as_sf() %>%
     ggplot() +
       geom_sf(aes(geometry = combined_geometry, fill = value)) +
-      geom_sf_text(inherit.aes = FALSE, aes(label = Signif), size = 5.0) +
-      scale_fill_gradient2(low = "#007F00", mid = "#FFFFFF", high = "#FF0000", midpoint = 1.0) +
-      labs(fill = "Scale", y = "", x = "© EuroGeographics for the administrative boundaries") +
+      scale_fill_gradientn(values = c(0.0, min_scale / (min_scale - max_scale), 1.0), colours = c("#007F00", "#FFFFFF", "#FF0000")) +
+      labs(fill = "Scale", x = "", y = "© EuroGeographics for the administrative boundaries") +
       std_theme() + theme(legend.position = "right", legend.text = element_text(hjust = 1)) + facet_grid(vars(sex), vars(age)))
-  print(sprintf("Heat Sensitivity (%d): Scale x Common Age-Sex Response (across Countries and %d-%d), * = (p < %.2f)",
-                LOADS_YEAR, min(YEARS_MODEL), max(YEARS_MODEL), ALPHA))
+  print(sprintf("Heat Sensitivity (%d): Scale x Common Age-Sex Response (across Countries and %d-%d)", LOADS_YEAR, min(YEARS_MODEL), max(YEARS_MODEL)))
 
   # visualize heat sensitivity trend results
+  min_trend <- min(results %>% filter(Type == "Trend") %>% pull("value"))
+  max_trend <- max(results %>% filter(Type == "Trend") %>% pull("value"))
   plot_pdf_png("Figure_6", aspect_ratio = 0.7,
     results %>% filter(Type == "Trend") %>%
-    mutate(Signif = ifelse(p.value < ALPHA, "*", "")) %>%
     left_join(., country_info, by = "country") %>% st_as_sf() %>%
     ggplot() +
       geom_sf(aes(geometry = combined_geometry, fill = value)) +
-      geom_sf_text(inherit.aes = FALSE, aes(label = Signif), size = 5.0) +
-      scale_fill_gradient2(low = "#007F00", mid = "#FFFFFF", high = "#FF0000", midpoint = 0.0) +
-      labs(fill = "Annual\nScale\nChange\n[1/year]", y = "", x = "© EuroGeographics for the administrative boundaries") +
+      scale_fill_gradientn(values = c(0.0, min_trend / (min_trend - max_trend), 1.0), colours = c("#007F00", "#FFFFFF", "#FF0000")) +
+      labs(fill = "Annual\nScale\nChange\n[1/year]", x = "", y = "© EuroGeographics for the administrative boundaries") +
       std_theme() + theme(legend.position = "right", legend.text = element_text(hjust = 1)) + facet_grid(vars(sex), vars(age)))
-  print(sprintf("Heat Sensitivity Trend (%d-%d): Slope = Annual Change to Factor, * = (p < %.2f)",
-                min(YEARS_MODEL), max(YEARS_MODEL), ALPHA))
+  print(sprintf("Heat Sensitivity Trend (%d-%d): Slope = Annual Change to Factor", min(YEARS_MODEL), max(YEARS_MODEL)))
 ```
 
-## Done
+## Pass 4 - Heat-Related and Excess Mortality
 
-```{r}
-  print(Sys.time() -start_time)
+Compute and juxtapose heat-related and excess mortality by country by year, summed over regions, sex, and age groups. Exploratory check only, for the appendix.
+
+```{r heat_related_and_excess_mortality}
+  # fit common models by sex and age group, across regions and years, removing years with COVID
+  heat_related_excess_mortality <- foreach (i = 1:nrow(m_age_sex), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
+    # extract subset of data for region, calculate weekly_death_rate for 100k population
+    df_m <- df_summer_shifted %>% filter(age == m_age_sex$age[i], sex == m_age_sex$sex[i]) %>%
+      mutate(weekly_death_rate = 1.0e5 * n_deaths / n_pop) %>% filter(!year %in% COVID_YEARS)
+ 
+    # fit common model across all geographies and years, accounting for differences in absolute rate, in secular trends, in recurring seasonal trends,
+    # with a common smooth term for the average temperature over the prior 0..3 days with implicit summation over weekdays
+    lag_0_3         <- as.matrix(df_m %>% select(starts_with("tmpc_lag_0_3_dow")))
+    lag_0_3_clipped <- as.matrix(df_m %>% select(starts_with("tmpc_lag_0_3_dow")) %>% mutate(across(everything(), ~pmin(0.0, .))))
+    gam4 <- bam(weekly_death_rate ~ 0 + geo + country:factor(year) + s(week, k = DOF_WEEK, bs = "ps", by = country) + s(lag_0_3, k = DOF_TMPC, bs = "ps"),
+                weights = n_pop, data = df_m, family = gaussian, discrete = TRUE)
+
+    # append response functions, cancelling out the response below the risk onset
+    df_m <- df_m %>%
+      mutate(t_response = predict.gam(gam4, newdata = list(geo = df_m$geo, country = df_m$country, year = df_m$year, week = df_m$week, lag_0_3 = lag_0_3)) -
+                          predict.gam(gam4, newdata = list(geo = df_m$geo, country = df_m$country, year = df_m$year, week = df_m$week, lag_0_3 = lag_0_3_clipped)))
+
+    # extract load functions from a linear model, using the common response as a predictor variable, replacing s(week) by bs(week)
+    # and computing country level deviations from the mean response, specified as the offset
+    lm4 <- lm(weekly_death_rate ~ 0 + geo + country:factor(year) + country:bs(week, df = DOF_WEEK) + offset(t_response) + country:t_response + country:year:t_response,
+              weights = n_pop, data = df_m)
+
+    # compute heat-related mortality as the difference between the predicted mortality for observed temperatures and the predicted mortality at the max of the minima
+    # compute excess mortality as the difference between the observed mortality and the predicted mortality at the max of the minima
+    df_m <- df_m %>%
+      mutate(predicted_deaths       = n_pop * 1.0e-5 * predict(lm4, type = "response"),
+             predicted_deaths_onset = n_pop * 1.0e-5 * predict(lm4, type = "response", newdata = df_m %>% mutate(t_response = 0.0))) %>%
+      mutate(heat_related_deaths    = round(predicted_deaths - predicted_deaths_onset, 0),
+             excess_deaths          = round(n_deaths         - predicted_deaths_onset, 0))
+
+    # return aggregated numbers, summed over regions and weeks, by country, year, sex, and age group
+    df_m %>% group_by(country, year) %>% reframe(heat_related_deaths = sum(heat_related_deaths), excess_deaths = sum(excess_deaths)) %>%
+      mutate(age = m_age_sex$age[i], sex = m_age_sex$sex[i])
+  }
+
+  # create table of heat-related and excess mortality
+  heat_related_excess_mortality %>% group_by(Country = country, Year = year) %>% reframe(HR_EX = sprintf("%.0f/%.0f", sum(heat_related_deaths), sum(excess_deaths))) %>%
+    pivot_wider(values_from = HR_EX, names_from = Country) %>%
+    mutate(Year = as.character(Year)) %>%
+    flextable() %>% set_caption("Heat-Related/Excess Deaths by Country and Year") %>% align(align = "center", part = "all")
+```
+
+## Execution Time
+
+```{r done}
+  print(Sys.time() - start_time)
 ```
