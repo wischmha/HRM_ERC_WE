@@ -925,7 +925,7 @@ Data from two COVID years (2020 and 2022) are excluded to avoid potential confou
     results %>% filter(Type == "Scale") %>%
     left_join(., country_info, by = "country") %>% st_as_sf() %>%
     ggplot() +
-      geom_sf(aes(geometry = combined_geometry, fill = value)) +
+      geom_sf(aes(geometry = combined_geometry, fill = value + 1.0)) +
       scale_fill_gradientn(values = c(0.0, min_scale / (min_scale - max_scale), 1.0), colours = c("#007F00", "#FFFFFF", "#FF0000")) +
       labs(fill = "Scale", x = "", y = "© EuroGeographics for the administrative boundaries") +
       std_theme() + theme(legend.position = "right", legend.text = element_text(hjust = 1)) + facet_grid(vars(sex), vars(age)))
