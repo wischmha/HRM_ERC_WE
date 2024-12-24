@@ -1,7 +1,7 @@
 ---
 title:  "A1_Process.Rmd / Heat-Related Mortality / Exposure Response"
 author: "Hans-Aloys Wischmann"
-date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2024-12-23 / Executed: `r Sys.Date()`"
+date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2024-12-24 / Executed: `r Sys.Date()`"
 output: word_document
 ---
 
@@ -970,7 +970,7 @@ Compute and juxtapose heat-related and excess mortality by country by year, summ
 
     # extract load functions from a linear model, using the common response as a predictor variable, replacing s(week) by bs(week)
     # and computing country level deviations from the mean response, specified as the offset
-    lm4 <- lm(weekly_death_rate ~ 0 + geo + country:factor(year) + country:bs(week, df = DOF_WEEK) + offset(t_response) + country:t_response + country:year:t_response,
+    lm4 <- lm(weekly_death_rate ~ 0 + geo + country:factor(year) + country:bs(week, df = DOF_WEEK) + offset(t_response) + country:t_response + country:factor(year):t_response,
               weights = n_pop, data = df_m)
 
     # compute heat-related mortality as the difference between the predicted mortality for observed temperatures and the predicted mortality at the max of the minima
