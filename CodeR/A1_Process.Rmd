@@ -1,7 +1,7 @@
 ---
 title:  "A1_Process.Rmd / Heat-Related Mortality / Exposure Response"
 author: "Hans-Aloys Wischmann"
-date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2024-12-24 / Executed: `r Sys.Date()`"
+date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2024-12-26 / Executed: `r Sys.Date()`"
 output: word_document
 ---
 
@@ -413,6 +413,9 @@ Vervielfältigung und Verbreitung, auch auszugsweise, mit Quellenangabe gestatte
       geom_sf(data = geo_info$geometry, inherit.aes = FALSE, aes(), linewidth = 0.2, color = "white", fill = NA) +
       std_theme())
   print("2018 Population (0.1 ° x 0.1 ° Grid)", fill = "Population")
+  
+  gc(full = TRUE)
+  stopImplicitCluster()
 ```
 
 ## Daily Mean Temperatures
@@ -448,7 +451,7 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
 
   # loop in parallel over regions, compute population_weighted mean temperature
   regions <- unique(populated_grid_with_lookup$geo)
-  tmpc_mean <- foreach (i = 1:length(regions), .combine = "cbind", .packages = "tidyverse") %dopar% {
+  tmpc_mean <- foreach (i = 1:length(regions), .combine = "cbind", .packages = "tidyverse") %do% {
     grid_region <- populated_grid_with_lookup %>% filter(geo == regions[i])
     sum_temp <- rep(0.0, dim(tmp)[3])
     sum_pop  <- rep(0.0, dim(tmp)[3])
@@ -671,6 +674,7 @@ Combine England and Wales into England.Wales for the main analysis.
   rm(list = ls(pattern = "df_summer"))
   rm(list = ls(pattern = "geo_info"))
   gc(full = TRUE)
+  stopImplicitCluster()
 ```
 
 ## Pass 1 - Individual models by region, by age, by sex, by year: Onset of heat-related risk
@@ -704,7 +708,7 @@ Individual GAMs are computed for the weekly death rates (assuming a gaussian err
     # determine highest temperature for which the smooth temperature response shows a local minimum, and the highest protective/neutral temperature
     cbind(df_grid %>% filter(response <= 0) %>% reframe(t_zero = max(tmpc)),
           df_grid %>% filter(lag(response) >= response, lead(response) >= response) %>% reframe(t_min = max(tmpc)),
-          m_geo_age_sex_year[i,], n_pop = df_m$n_pop)
+          m_geo_age_sex_year[i,], n_pop = unique(df_m$n_pop))
   }
 
   # document total number of models that were fitted and number of minima and zero crossings found
@@ -843,7 +847,7 @@ Common GAMs are computed for the weekly death rates (assuming a gaussian error d
       ggplot(aes(x = tmpc, y = response, group_by = age_sex, fill = age_sex, color = age_sex)) +
         geom_ribbon(aes(ymin = response + qnorm(ALPHA * 0.5) * se, ymax = response + qnorm(1.0 - ALPHA * 0.5) * se), alpha = 0.2, color = NA) +
         geom_line() +
-        labs(y = "Weekly Mortality Rate [1/100.000], with 95%-CI", x = "T [°C]") +
+        labs(y = "Weekly Mortality Rate [1/100.000], with 95%-CI", x = "        Temperature T [°C]                                               Relative Temperature T-T0 [°C]") +
         scale_color_manual(values = safe_colorblind_palette, name = "Age:Sex") +
         scale_fill_manual(values = safe_colorblind_palette, name = "Age:Sex") +
         std_theme() + facet_wrap(~model, nrow = 1, scale = "free_x"))
@@ -851,7 +855,7 @@ Common GAMs are computed for the weekly death rates (assuming a gaussian error d
 
   # compute and report power-law fits
   power_laws <- foreach (i = 1:nrow(m_age_sex), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
-    nls1 <- nls(response ~ a + b * tmpc^c, start = list(a = 0.0, b = 0.1, c = 2.0),
+    nls1 <- nls(response ~ a + b * tmpc^c, start = list(a = 0.0, b = 0.1, c = 1.5),
       data = response_functions %>% filter(model == "Temperature above Onset", tmpc > 0.0, age == m_age_sex$age[i], sex == m_age_sex$sex[i]))
     data.frame(power = coef(nls1)["c"], power_cl = confint(nls1, "c", level = 1.0 - ALPHA)[1], power_ch = confint(nls1, "c", level = 1.0 - ALPHA)[2]) %>%
       mutate(Age = m_age_sex$age[i], Sex = m_age_sex$sex[i])
@@ -869,7 +873,7 @@ Data from two COVID years (2020 and 2022) are excluded to avoid potential confou
 
 ```{r fit_loading_common_models}
   # fit common models by sex and age group, across regions and years, removing years with COVID
-  load_functions <- foreach (i = 1:nrow(m_age_sex), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
+  load_functions <- foreach (i = 1:nrow(m_age_sex), .combine = "rbind", .packages = c("tidyverse", "mgcv", "splines")) %dopar% {
     # extract subset of data for region, calculate weekly_death_rate for 100k population
     df_m <- df_summer_shifted %>% filter(age == m_age_sex$age[i], sex == m_age_sex$sex[i]) %>%
       mutate(weekly_death_rate = 1.0e5 * n_deaths / n_pop) %>% filter(!year %in% COVID_YEARS) %>%
@@ -951,7 +955,7 @@ Compute and juxtapose heat-related and excess mortality by country by year, summ
 
 ```{r heat_related_and_excess_mortality}
   # fit common models by sex and age group, across regions and years, removing years with COVID
-  heat_related_excess_mortality <- foreach (i = 1:nrow(m_age_sex), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
+  heat_related_excess_mortality <- foreach (i = 1:nrow(m_age_sex), .combine = "rbind", .packages = c("tidyverse", "mgcv", "splines")) %dopar% {
     # extract subset of data for region, calculate weekly_death_rate for 100k population
     df_m <- df_summer_shifted %>% filter(age == m_age_sex$age[i], sex == m_age_sex$sex[i]) %>%
       mutate(weekly_death_rate = 1.0e5 * n_deaths / n_pop) %>% filter(!year %in% COVID_YEARS)
