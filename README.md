@@ -1,6 +1,6 @@
 # HRM_ERC_WE
 Heat Related Mortality - Exposure Response Curves - Western Europe
-(c) 2024 Hans-Aloys Wischmann, Institute of Public Health,
+(c) 2024-2025 Hans-Aloys Wischmann, Institute of Public Health,
 Charité - Universitätsmedizin Berlin, Germany
 
 Main files:

@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Hans-Aloys Wischmann, 2024-07-21
+# Hans-Aloys Wischmann, 2025-04-06
 # Ubuntu, or Ubuntu shell (app) on Windows (WSL 2)
 # 
 mkdir ../Downloads
@@ -24,8 +24,8 @@ wget https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/demo_r_pjangr
 wget https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/demo_r_mwk2_05?format=TSV   -O Deaths_Weekly_NUTS2.tsv
 echo "Eurostat downloads:" `date` | tee -a ../Downloads.txt
 
-wget  https://www.destatis.de/DE/Themen/Gesellschaft-Umwelt/Bevoelkerung/Sterbefaelle-Lebenserwartung/Publikationen/Downloads-Sterbefaelle/statistischer-bericht-sterbefaelle-tage-wochen-monate-endg-5126108.xlsx?__blob=publicationFile -O Deaths_Germany_2000_2019.xlsx
-wget https://www.destatis.de/DE/Themen/Gesellschaft-Umwelt/Bevoelkerung/Sterbefaelle-Lebenserwartung/Publikationen/Downloads-Sterbefaelle/statistischer-bericht-sterbefaelle-tage-wochen-monate-aktuell-5126109.xlsx?__blob=publicationFile -O Deaths_Germany_2020_2023.xlsx
+wget https://www.destatis.de/static/DE/dokumente/5126108209005_SB.xlsx -O Deaths_Germany_2000_2020.xlsx
+wget https://www.destatis.de/DE/Themen/Gesellschaft-Umwelt/Bevoelkerung/Sterbefaelle-Lebenserwartung/Publikationen/Downloads-Sterbefaelle/statistischer-bericht-sterbefaelle-tage-wochen-monate-aktuell-5126109.xlsx?__blob=publicationFile -O Deaths_Germany_2021_2025.xlsx
 echo "DESTATIS downloads:" `date` | tee -a ../Downloads.txt
 
 wget https://www.insee.fr/fr/statistiques/fichier/4769950/deces-2000-2009-csv.zip
@@ -34,15 +34,7 @@ wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2020.zip
 wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2021.zip
 wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2022.zip
 wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2023.zip
-wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2024_M01.zip
-wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2024_M02.zip
-wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2024_M03.zip
-wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2024_M04.zip
-wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2024_M05.zip
-wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2024_M06.zip
-wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2024_M07.zip
-wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2024_M08.zip
-wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2024_M09.zip
+wget https://www.insee.fr/fr/statistiques/fichier/4190491/Deces_2024.zip
 for f in ?eces*.zip; do unzip $f; rm $f; done
 for f in ?eces*.csv; do mv $f $(echo $f | sed 's/^[dDeces]*./Deaths_France_/'); done
 echo "INSEE downloads:" `date` | tee -a ../Downloads.txt
@@ -54,6 +46,6 @@ echo "ONS downloads:" `date` | tee -a ../Downloads.txt
 
 cd ../Temperature
 
-wget https://knmi-ecad-assets-prd.s3.amazonaws.com/ensembles/data/Grid_0.1deg_reg_ensemble/tg_ens_mean_0.1deg_reg_v30.0e.nc
+wget https://knmi-ecad-assets-prd.s3.amazonaws.com/ensembles/data/Grid_0.1deg_reg_ensemble/tg_ens_mean_0.1deg_reg_v31.0e.nc
 echo "E-OBS downloads:" `date` | tee -a ../Downloads.txt
 
