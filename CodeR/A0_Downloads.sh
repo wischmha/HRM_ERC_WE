@@ -40,6 +40,7 @@ for f in ?eces*.csv; do mv $f $(echo $f | sed 's/^[dDeces]*./Deaths_France_/'); 
 echo "INSEE downloads:" `date` | tee -a ../Downloads.txt
 
 wget https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1125weeklydeathoccurrencesbysexfiveyearagegroupandregionenglandandwales1981to2021/weeklydeathoccurrences19812022final.xlsx -O Deaths_England_Wales_1981_2022.xlsx
+wget https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/datasets/weeklyprovisionalfiguresondeathsregisteredinenglandandwales/2024/weeklydeathsweek522024.xlsx -O Deaths_England_Wales_2023_2024.xlsx
 echo "Manually for Population England and Wales" | tee -a ../Downloads.txt
 echo "https://www.nomisweb.co.uk/query/construct/summary.asp?mode=construct&version=0&dataset=2002" | tee -a ../Downloads.txt
 echo "ONS downloads:" `date` | tee -a ../Downloads.txt

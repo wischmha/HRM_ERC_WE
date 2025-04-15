@@ -1,0 +1,9 @@
+Starting downloads: Di 15. Apr 16:07:23 CEST 2025
+GISCO downloads: Di 15. Apr 16:07:55 CEST 2025
+Eurostat downloads: Di 15. Apr 16:08:33 CEST 2025
+DESTATIS downloads: Di 15. Apr 16:08:37 CEST 2025
+INSEE downloads: Di 15. Apr 16:13:22 CEST 2025
+Manually for Population England and Wales
+https://www.nomisweb.co.uk/query/construct/summary.asp?mode=construct&version=0&dataset=2002
+ONS downloads: Di 15. Apr 16:13:24 CEST 2025
+E-OBS downloads: Di 15. Apr 16:22:25 CEST 2025
