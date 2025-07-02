@@ -1,7 +1,7 @@
 ---
 title:  "A2_Preprocess.Rmd / Heat-Related Mortality / Exposure Response"
 author: "Hans-Aloys Wischmann, Institute for Public Health, Charité - Universitätsmedizin Berlin"
-date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-05-24 / Executed: `r Sys.Date()`"
+date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-07-02 / Executed: `r Sys.Date()`"
 output:
   officedown::rdocx_document:
     reference_docx: A4_Template.docx
@@ -493,6 +493,7 @@ Exposure response is shown by country, as the sum over incremental deaths across
     mutate(decade = sprintf("%d-%d", 10 * (year %/% 10), 10 * (year %/% 10) + 9)) %>%
     mutate(week = gsub("^.*W", "", ISOweek(date_from + 2))) %>%
     filter(week >= FIRST_SUMMER_WEEK, week <= LAST_SUMMER_WEEK) %>%
+    mutate(country = ifelse(country %in% c("England", "Wales"), "England.Wales", country)) %>%
     group_by(country, decade, age, tmpc_max_lag_0_3) %>% reframe(r_deaths = 100000.0 * sum(n_deaths) / sum(n_pop), n_pop = sum(n_pop))
 
   plot_pdf_png("Figure_1", aspect_ratio = 0.9,
@@ -514,9 +515,9 @@ Exposure response is shown by country, as the sum over incremental deaths across
                                    age == "85-99" ~ scale_y_continuous(limits = c(-108, 270), breaks = seq(-90, 270, 90)))))
   print("Figure_1: Raw Exposure Response Curves (Summer), Incremental Deaths")
 
-  plot_pdf_png("Figure_2", aspect_ratio = 0.9,
+  plot_pdf_png("Figure_2", aspect_ratio = 0.7,
     incremental_death_rate_by_country_exposure_by_region %>% filter(tmpc_max_lag_0_3 >= 5.0) %>%
-    filter(age %in% c("75-84", "85-99"), !country %in% c("Netherlands", "Italy")) %>%
+    filter(age %in% c("75-84", "85-99")) %>%
     ggplot(aes(x = tmpc_max_lag_0_3, y = r_deaths, group_by = interaction(age, decade), color = age, weight = n_pop)) +
       geom_smooth(aes(fill = age, color = age, linetype = decade), formula = y ~ x, method = "loess", span = 0.8, se = TRUE, alpha = 0.2) +
       labs(color = "", fill = "", linetype = "",
@@ -525,8 +526,8 @@ Exposure response is shown by country, as the sum over incremental deaths across
       scale_x_continuous(breaks = seq(10, 30, 10), labels = ~sprintf("%d °C", .x)) +
       scale_fill_manual(values = safe_colorblind_palette[c(4,2)]) +
       scale_color_manual(values = safe_colorblind_palette[c(4,2)]) +
-      guides(fill = guide_legend(nrow = 2, byrow = FALSE), linetype = guide_legend(nrow = 2, byrow = FALSE, override.aes = list(color = "#7F7F7F"))) +
-      std_theme() + theme(legend.position = "top") + facet_wrap(~country, nrow = 3))
+      guides(fill = guide_legend(nrow = 1, byrow = FALSE), linetype = guide_legend(nrow = 1, byrow = FALSE, override.aes = list(color = "black", fill = "#BFBFBF"))) +
+      std_theme() + theme(legend.position = "top") + facet_wrap(~country, nrow = 2))
   print("Figure_2: Raw Exposure Response Curves (Summer), Incremental Deaths, 74-84 and 85+ Years")
 ```
 # Combine Required Data

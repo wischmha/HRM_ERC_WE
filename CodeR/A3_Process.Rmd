@@ -1,7 +1,7 @@
 ---
 title:  "A3_Process.Rmd / Heat-Related Mortality / Exposure Response"
 author: "Hans-Aloys Wischmann, Institute for Public Health, Charité - Universitätsmedizin Berlin"
-date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-05-24 / Executed: `r Sys.Date()`"
+date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-07-02 / Executed: `r Sys.Date()`"
 output:
   officedown::rdocx_document:
     reference_docx: A4_Template.docx
@@ -344,7 +344,29 @@ Exploratory calculations to assess plausibility of the model: Table of juxtapose
       mutate(predicted_deaths       = round(n_pop * 1.0e-5 * predict(lm4, type = "response"                                             ), 0),
              predicted_deaths_onset = round(n_pop * 1.0e-5 * predict(lm4, type = "response", newdata = df_m %>% mutate(t_response = 0.0)), 0))
   }
-  
+
+  # create a replica of Figure 2, for predicted mortality instead of observed mortality
+  incremental_death_rate_by_country_exposure_by_region <- predicted_mortality %>%
+    mutate(tmpc_max_lag_0_3 = round(pmax(tmpc_lag_0_3_dow_0, tmpc_lag_0_3_dow_1, tmpc_lag_0_3_dow_2, tmpc_lag_0_3_dow_3,
+                                         tmpc_lag_0_3_dow_4, tmpc_lag_0_3_dow_5, tmpc_lag_0_3_dow_6), 0)) %>%
+    group_by(geo, year, sex, age) %>% mutate(n_deaths = predicted_deaths - mean(predicted_deaths)) %>% ungroup() %>%
+    mutate(decade = sprintf("%d-%d", 10 * (year %/% 10), 10 * (year %/% 10) + 9)) %>%
+    group_by(country, decade, age, tmpc_max_lag_0_3) %>% reframe(r_deaths = 100000.0 * sum(n_deaths) / sum(n_pop), n_pop = sum(n_pop))
+  plot_pdf_png("Figure_S4", aspect_ratio = 0.7,
+    incremental_death_rate_by_country_exposure_by_region %>%
+    filter(age %in% c("75-84", "85-99"), decade %in% c("2000-2009", "2010-2019")) %>%
+    ggplot(aes(x = tmpc_max_lag_0_3, y = r_deaths, group_by = interaction(age, decade), color = age, weight = n_pop)) +
+      geom_smooth(aes(fill = age, color = age, linetype = decade), formula = y ~ x, method = "loess", span = 0.8, se = TRUE, alpha = 0.2) +
+      labs(color = "", fill = "", linetype = "",
+           x = "Mean Temperature over prior 0:3 Days (relative to T0), Maximum over 7 Days of Week",
+           y = "Weekly Rate of Incremental Deaths in Summer [1/100k]\nvs. Region-Year-Sex-Age Mean, All Regions") +
+      scale_x_continuous(breaks = seq(-10, 10, 10), labels = ~sprintf("%d °C", .x)) +
+      scale_fill_manual(values = safe_colorblind_palette[c(4,2)]) +
+      scale_color_manual(values = safe_colorblind_palette[c(4,2)]) +
+      guides(fill = guide_legend(nrow = 1, byrow = FALSE), linetype = guide_legend(nrow = 1, byrow = FALSE, override.aes = list(color = "black", fill = "#BFBFBF"))) +
+      std_theme() + theme(legend.position = "top") + facet_wrap(~country, nrow = 2))
+  print("Figure_S4: Modeled Exposure Response Curves (Summer), Incremental Deaths, 74-84 and 85+ Years")
+
   # compute heat-related mortality as the difference between the predicted mortality for observed temperatures and the predicted mortality at the onset
   # compute excess mortality as the difference between the observed mortality and the predicted mortality at the onset
   heat_related_excess_mortality <- predicted_mortality %>% filter(geo != "UKL") %>%
