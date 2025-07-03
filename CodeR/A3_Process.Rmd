@@ -1,7 +1,7 @@
 ---
 title:  "A3_Process.Rmd / Heat-Related Mortality / Exposure Response"
 author: "Hans-Aloys Wischmann, Institute for Public Health, Charité - Universitätsmedizin Berlin"
-date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-07-02 / Executed: `r Sys.Date()`"
+date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-07-03 / Executed: `r Sys.Date()`"
 output:
   officedown::rdocx_document:
     reference_docx: A4_Template.docx
@@ -183,10 +183,9 @@ Common GAMs are computed for the weekly death rates (assuming a Gaussian error d
     predicted_terms <- predict.gam(gam2, newdata = df_grid, type = "terms", terms = "s(lag_0_3)", se.fit = TRUE)
 
     # response functions, by age and sex, to be aggregated
-    cbind(tmpc = df_grid$lag_0_3, age = m_age_sex$age[i], sex = m_age_sex$sex[i],
+    cbind(tmpc = df_grid$lag_0_3, age = m_age_sex$age[i], sex = m_age_sex$sex[i], AIC = AIC(gam2),
           as.data.frame(predicted_terms$fit   ) %>% rename_with(~str_replace_all(.x, c("s[(]lag_" = "response_", "[)]" = ""))),
-          as.data.frame(predicted_terms$se.fit) %>% rename_with(~str_replace_all(.x, c("s[(]lag_" = "se_", "[)]" = "")))) %>%
-      mutate(age = m_age_sex$age[i], sex = m_age_sex$sex[i])
+          as.data.frame(predicted_terms$se.fit) %>% rename_with(~str_replace_all(.x, c("s[(]lag_" = "se_", "[)]" = ""))))
   }
   corrected <- foreach (i = 1:nrow(m_age_sex), .combine = "rbind", .packages = c("tidyverse", "mgcv")) %dopar% {
     # extract subset of data for region, calculate weekly_death_rate for 100k population
@@ -206,10 +205,17 @@ Common GAMs are computed for the weekly death rates (assuming a Gaussian error d
     predicted_terms <- predict.gam(gam2, newdata = df_grid, type = "terms", terms = "s(lag_0_3)", se.fit = TRUE)
 
     # response functions, by age and sex, to be aggregated
-    cbind(tmpc = df_grid$lag_0_3, age = m_age_sex$age[i], sex = m_age_sex$sex[i],
+    cbind(tmpc = df_grid$lag_0_3, age = m_age_sex$age[i], sex = m_age_sex$sex[i], AIC = AIC(gam2),
           as.data.frame(predicted_terms$fit   ) %>% rename_with(~str_replace_all(.x, c("s[(]lag_" = "response_", "[)]" = ""))),
           as.data.frame(predicted_terms$se.fit) %>% rename_with(~str_replace_all(.x, c("s[(]lag_" = "se_", "[)]" = ""))))
   }
+  
+  # compares AIC between model
+  rbind(observed %>% mutate(model = "Observed"), corrected %>% mutate(model = "Relative")) %>%
+    select(Age = age, Sex = sex, model, AIC) %>% distinct() %>% arrange(Age, Sex, model) %>%
+    pivot_wider(names_from = model, values_from = AIC, names_prefix = "AIC_") %>% mutate(AIC_Difference = AIC_Observed - AIC_Relative) %>%
+    mutate(across(starts_with("AIC_"), ~round(.x, 0)), Sex = ifelse(Sex == "F", "Female", "Male")) %>%
+    flextable() %>% set_caption("AIC for common response using observed T and relative T-T0")
 
   # combine response functions and convert into tidy table
   response_functions <- rbind(observed %>% mutate(model = "Observed"), corrected %>% mutate(model = "Relative")) %>%
@@ -367,10 +373,22 @@ Exploratory calculations to assess plausibility of the model: Table of juxtapose
       std_theme() + theme(legend.position = "top") + facet_wrap(~country, nrow = 2))
   print("Figure_S4: Modeled Exposure Response Curves (Summer), Incremental Deaths, 74-84 and 85+ Years")
 
+  # create visual comparison for heat waves, 2003, one country
+  plot_pdf_png("Figure_S5", aspect_ratio = 0.7,
+    predicted_mortality %>% filter(country == "Germany", year == 2003) %>%
+      group_by(sex, age, week) %>% reframe(across(c(n_deaths, predicted_deaths, predicted_deaths_onset), ~sum(.x))) %>%
+    ggplot(aes(x = week)) +
+      geom_line(aes(y = n_deaths), color = "black") +
+      geom_line(aes(y = predicted_deaths), color = "red") +
+      geom_line(aes(y = predicted_deaths_onset), color = "blue") +
+      expand_limits(y = 0.0) +
+      labs(x = "Week of 2003", y = "Number of Deaths") +
+      facet_grid(vars(sex), vars(age), scales = "free"))
+
   # compute heat-related mortality as the difference between the predicted mortality for observed temperatures and the predicted mortality at the onset
-  # compute excess mortality as the difference between the observed mortality and the predicted mortality at the onset
+  # compute excess mortality as the difference between the observed mortality and the predicted mortality at the onset, in heat wave weeks
   heat_related_excess_mortality <- predicted_mortality %>% filter(geo != "UKL") %>%
-    mutate(heat_related_deaths = predicted_deaths - predicted_deaths_onset, excess_deaths = n_deaths - predicted_deaths_onset) %>%
+    mutate(heat_related_deaths = predicted_deaths - predicted_deaths_onset, excess_deaths = (n_deaths - predicted_deaths_onset) * (predicted_deaths != predicted_deaths_onset)) %>%
     group_by(country, year, age, sex) %>% reframe(across(c(heat_related_deaths, excess_deaths), ~sum(.x)))
 
   # compute Pearson correlation by country
