@@ -218,7 +218,7 @@ Common GAMs are computed for the weekly death rates (assuming a Gaussian error d
     flextable() %>% set_caption("AIC for common response using observed T and relative T-T0")
 
   # combine response functions and convert into tidy table
-  response_functions <- rbind(observed %>% mutate(model = "Observed"), corrected %>% mutate(model = "Relative")) %>%
+  response_functions <- rbind(observed %>% mutate(model = "Observed"), corrected %>% mutate(model = "Relative")) %>% select(!AIC) %>%
     pivot_longer(!c(tmpc, age, sex, model)) %>%
     mutate(type = gsub("_.*$", "", name), lag = paste(gsub("^[a-zA-Z]*.", "Lag: ", name), "day(s)")) %>% select(!name) %>%
     pivot_wider(names_from = type, values_from = value)
