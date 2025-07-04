@@ -215,7 +215,7 @@ Common GAMs are computed for the weekly death rates (assuming a Gaussian error d
     select(Age = age, Sex = sex, model, AIC) %>% distinct() %>% arrange(Age, Sex, model) %>%
     pivot_wider(names_from = model, values_from = AIC, names_prefix = "AIC_") %>% mutate(AIC_Difference = AIC_Observed - AIC_Relative) %>%
     mutate(across(starts_with("AIC_"), ~round(.x, 0)), Sex = ifelse(Sex == "F", "Female", "Male")) %>%
-    flextable() %>% set_caption("AIC for common response using observed T and relative T-T0")
+    flextable() %>% set_caption("AIC for common response using observed T and relative T-T0") %>% autofit()
 
   # combine response functions and convert into tidy table
   response_functions <- rbind(observed %>% mutate(model = "Observed"), corrected %>% mutate(model = "Relative")) %>% select(!AIC) %>%
@@ -358,7 +358,7 @@ Exploratory calculations to assess plausibility of the model: Table of juxtapose
     group_by(geo, year, sex, age) %>% mutate(n_deaths = predicted_deaths - mean(predicted_deaths)) %>% ungroup() %>%
     mutate(decade = sprintf("%d-%d", 10 * (year %/% 10), 10 * (year %/% 10) + 9)) %>%
     group_by(country, decade, age, tmpc_max_lag_0_3) %>% reframe(r_deaths = 100000.0 * sum(n_deaths) / sum(n_pop), n_pop = sum(n_pop))
-  plot_pdf_png("Figure_S4", aspect_ratio = 0.7,
+  plot_pdf_png("Figure_S5", aspect_ratio = 0.7,
     incremental_death_rate_by_country_exposure_by_region %>%
     filter(age %in% c("75-84", "85-99"), decade %in% c("2000-2009", "2010-2019")) %>%
     ggplot(aes(x = tmpc_max_lag_0_3, y = r_deaths, group_by = interaction(age, decade), color = age, weight = n_pop)) +
@@ -369,12 +369,13 @@ Exploratory calculations to assess plausibility of the model: Table of juxtapose
       scale_x_continuous(breaks = seq(-10, 10, 10), labels = ~sprintf("%d °C", .x)) +
       scale_fill_manual(values = safe_colorblind_palette[c(4,2)]) +
       scale_color_manual(values = safe_colorblind_palette[c(4,2)]) +
+      scale_linetype_manual(values = c("twodash", "solid")) +
       guides(fill = guide_legend(nrow = 1, byrow = FALSE), linetype = guide_legend(nrow = 1, byrow = FALSE, override.aes = list(color = "black", fill = "#BFBFBF"))) +
       std_theme() + theme(legend.position = "top") + facet_wrap(~country, nrow = 2))
-  print("Figure_S4: Modeled Exposure Response Curves (Summer), Incremental Deaths, 74-84 and 85+ Years")
+  print("Figure_S5: Modeled Exposure Response Curves (Summer), Incremental Deaths, 74-84 and 85+ Years")
 
   # create visual comparison for heat waves, 2003, one country
-  plot_pdf_png("Figure_S5", aspect_ratio = 0.7,
+  plot_pdf_png("Figure_S3", aspect_ratio = 0.7,
     predicted_mortality %>% filter(country == "Germany", year == 2003) %>%
       group_by(sex, age, week) %>% reframe(across(c(n_deaths, predicted_deaths, predicted_deaths_onset), ~sum(.x))) %>%
     ggplot(aes(x = week)) +
@@ -384,6 +385,7 @@ Exploratory calculations to assess plausibility of the model: Table of juxtapose
       expand_limits(y = 0.0) +
       labs(x = "Week of 2003", y = "Number of Deaths") +
       facet_grid(vars(sex), vars(age), scales = "free"))
+  print("Figure_S3: Comparison of observed (black) and predicted (red) weekly mortality for Germany for 2003, overlaid with baseline (blue) from counterfactually capped temperatures")
 
   # compute heat-related mortality as the difference between the predicted mortality for observed temperatures and the predicted mortality at the onset
   # compute excess mortality as the difference between the observed mortality and the predicted mortality at the onset, in heat wave weeks
