@@ -1,7 +1,7 @@
 ---
 title:  "A2_Preprocess.Rmd / Heat-Related Mortality / Exposure Response"
 author: "Hans-Aloys Wischmann, Institute for Public Health, Charité - Universitätsmedizin Berlin"
-date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-07-02 / Executed: `r Sys.Date()`"
+date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-07-04 / Executed: `r Sys.Date()`"
 output:
   officedown::rdocx_document:
     reference_docx: A4_Template.docx
@@ -412,7 +412,7 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
 
 ```{r temperature_plots}
   # create example plots for heat waves of 2003, 2019, and 2023
-  plot_pdf_png("Figure_X4", aspect_ratio = 0.5,
+  plot_pdf_png("Figure_S4", aspect_ratio = 0.5,
     temperatures_daily_lagged %>%
     filter(date %in% c("2003-08-12", "2019-07-25", "2023-08-24")) %>%
     pivot_longer(starts_with("tmp"), names_to = "lag", values_to = "tmp") %>%
@@ -429,7 +429,7 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
       scale_fill_gradientn(colors = safe_heatmap_palette, breaks = seq(15, 30, 5), limits = c(12.0, 33.0)) +
       geom_sf(inherit.aes = FALSE, aes(), linewidth = 0.05, color = "black", fill = NA) +
       std_theme() + facet_wrap(~cat, nrow = 1, dir = "h"))
-  print("Figure_X4: Average Temperatures", fill = "T [°C]")
+  print("Figure_S4: Average Temperatures", fill = "T [°C]")
 ```
 # Outcome Plots: Deaths (Absolute, Standardized)
 
@@ -447,7 +447,7 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
     group_by(country, year, date_from) %>% reframe(n_deaths = sum(n_deaths), n_deaths_std = sum(n_deaths_std))
 
   # deaths (observed)
-  plot_pdf_png("Figure_X5", aspect_ratio = 1.2,
+  plot_pdf_png("Figure_X4", aspect_ratio = 1.2,
     deaths_total %>% filter(year %in% YEARS_MODEL, country != "Luxembourg") %>%
     mutate(panel = sprintf("%d-%d", year - (year - min(YEARS_MODEL)) %% 8, year - (year - min(YEARS_MODEL)) %% 8 + 7)) %>%
     ggplot(aes(x = date_from, y = n_deaths, group_by = country, color = country)) +
@@ -457,10 +457,10 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
       scale_color_manual(values = safe_colorblind_palette) +
       std_theme() + theme(legend.position = "top", axis.ticks.x=element_blank()) +
       guides(color = guide_legend(nrow = 2, byrow = FALSE)) + facet_wrap(~panel, ncol = 1, scales = "free_x"))
-  print("Figure_X5: Deaths (Observed)")
+  print("Figure_X4: Deaths (Observed)")
 
   # deaths (standardized, with mean over all weekly deaths removed by country)
-  plot_pdf_png("Figure_X6", aspect_ratio = 1.2,
+  plot_pdf_png("Figure_X5", aspect_ratio = 1.2,
     deaths_total %>% filter(year %in% YEARS_MODEL, country != "Luxembourg") %>%
     group_by(country) %>% mutate(n_deaths_std = n_deaths_std - mean(n_deaths_std)) %>% ungroup() %>%
     mutate(panel = sprintf("%d-%d", year - (year - min(YEARS_MODEL)) %% 8, year - (year - min(YEARS_MODEL)) %% 8 + 7)) %>%
@@ -471,7 +471,7 @@ Citation: Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jon
       scale_color_manual(values = safe_colorblind_palette) +
       std_theme() + theme(legend.position = "top", axis.ticks.x=element_blank()) +
       guides(color = guide_legend(nrow = 2, byrow = FALSE)) + facet_wrap(~panel, ncol = 1, scales = "free_x"))
-  print("Figure_X6: Deaths (EU27 Standard Population)")
+  print("Figure_X5: Deaths (EU27 Standard Population)")
 ```
 # Exposure Response (Raw)
 
@@ -526,7 +526,7 @@ Exposure response is shown by country, as the sum over incremental deaths across
       scale_x_continuous(breaks = seq(10, 30, 10), labels = ~sprintf("%d °C", .x)) +
       scale_fill_manual(values = safe_colorblind_palette[c(4,2)]) +
       scale_color_manual(values = safe_colorblind_palette[c(4,2)]) +
-      scale_linetype_manual(values = c("twodash", "solid")) +
+      scale_linetype_manual(values = c("11", "solid")) +
       guides(fill = guide_legend(nrow = 1, byrow = FALSE), linetype = guide_legend(nrow = 1, byrow = FALSE, override.aes = list(color = "black", fill = "#BFBFBF"))) +
       std_theme() + theme(legend.position = "top") + facet_wrap(~country, nrow = 2))
   print("Figure_2: Raw Exposure Response Curves (Summer), Incremental Deaths, 74-84 and 85+ Years")

@@ -1,7 +1,7 @@
 ---
 title:  "A3_Process.Rmd / Heat-Related Mortality / Exposure Response"
 author: "Hans-Aloys Wischmann, Institute for Public Health, Charité - Universitätsmedizin Berlin"
-date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-07-03 / Executed: `r Sys.Date()`"
+date:   "Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-07-04 / Executed: `r Sys.Date()`"
 output:
   officedown::rdocx_document:
     reference_docx: A4_Template.docx
@@ -369,7 +369,7 @@ Exploratory calculations to assess plausibility of the model: Table of juxtapose
       scale_x_continuous(breaks = seq(-10, 10, 10), labels = ~sprintf("%d °C", .x)) +
       scale_fill_manual(values = safe_colorblind_palette[c(4,2)]) +
       scale_color_manual(values = safe_colorblind_palette[c(4,2)]) +
-      scale_linetype_manual(values = c("twodash", "solid")) +
+      scale_linetype_manual(values = c("11", "solid")) +
       guides(fill = guide_legend(nrow = 1, byrow = FALSE), linetype = guide_legend(nrow = 1, byrow = FALSE, override.aes = list(color = "black", fill = "#BFBFBF"))) +
       std_theme() + theme(legend.position = "top") + facet_wrap(~country, nrow = 2))
   print("Figure_S5: Modeled Exposure Response Curves (Summer), Incremental Deaths, 74-84 and 85+ Years")

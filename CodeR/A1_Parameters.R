@@ -1,11 +1,11 @@
 # A1_Parameters.R / Heat-Related Mortality / Exposure Response"
 # Author: Hans-Aloys Wischmann, Institute for Public Health, Charité - Universitätsmedizin Berlin
-# Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-05-24
+# Written: 2023-04-12 to 2023-08-31 / Totally revised: 2024-11-07 to 2025-07-04
 
 # ensure consistency across systems, define presets, set default figure size
 Sys.setlocale("LC_ALL", 'en_US.UTF-8')
 Sys.setenv(LANG = "en_US.UTF-8")
-knitr::opts_chunk$set(echo = FALSE, dpi = 1200, comment = NA, fig.width = 6.25, fig.height = 6.25)
+knitr::opts_chunk$set(echo = FALSE, dpi = 1200, comment = NA)
 knitr::opts_knit$set(root.dir = getwd())
 
 # create a clean slate
@@ -49,13 +49,13 @@ config_parallel()
 ggplot_font_size = 10 # font size for all texts except for geom_text, in points
 plot_pdf_png <- function(file_name, aspect_ratio, plot_object, plot_width = 6.25, plot_res = 1200) {
   themed_object <- plot_object + theme(text = element_text(size = ggplot_font_size), plot.title = element_text(size = ggplot_font_size))
-  print(themed_object)
-  pdf(sprintf("../Plots/%s.pdf", file_name), plot_width, plot_width * aspect_ratio, paper = "a4")
-  print(themed_object)
-  ignore <- dev.off()
   png(sprintf("../Plots/%s.png", file_name), width = plot_width, height = plot_width * aspect_ratio, units = "in", res = plot_res)
   print(themed_object)
   ignore <- dev.off()
+  pdf(sprintf("../Plots/%s.pdf", file_name), plot_width, plot_width * aspect_ratio, paper = "a4")
+  print(themed_object)
+  ignore <- dev.off()
+  print(themed_object)
 }
 
 # create a standard theme
